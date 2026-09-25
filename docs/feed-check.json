@@ -1,0 +1,25 @@
+{
+  "checked_at_utc": "2026-09-25T15:56:28Z",
+  "authentication": "No key, cookie or authorization header used",
+  "schedule": {
+    "url": "https://rutgers.tripshot.com/v1/gtfs.zip?regionId=CA558DDC-D7F2-4B48-9CAC-DEEA1134F820",
+    "status": 200,
+    "routes": 22,
+    "stops": 54,
+    "trips": 3134
+  },
+  "trips": {
+    "url": "https://rutgers.tripshot.com/v1/gtfs/realtime/tripUpdate/CA558DDC-D7F2-4B48-9CAC-DEEA1134F820",
+    "status": 200,
+    "timestamp": 1790351773,
+    "entities": 453,
+    "matched_static_trips": 452
+  },
+  "alerts": {
+    "url": "https://rutgers.tripshot.com/v1/gtfs/realtime/serviceAlert/CA558DDC-D7F2-4B48-9CAC-DEEA1134F820",
+    "status": 200,
+    "timestamp": 1790351788,
+    "entities": 0
+  },
+  "note": "Observed access only; not a license, SLA, or assertion that these saved timestamps are current."
+}

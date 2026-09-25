@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+backend/.venv/
+__pycache__/
+.pytest_cache/
+*.xcuserstate
+xcuserdata/
+.DS_Store
