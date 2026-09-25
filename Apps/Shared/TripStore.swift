@@ -6,6 +6,7 @@ struct Transfer: Codable {
     var trip: SavedTrip?
     var snapshot: Snapshot?
     var demo: Bool
+    var journeyPreview: JourneyPreview? = nil
 }
 
 enum DemoScenario: String, CaseIterable, Identifiable {
@@ -15,6 +16,7 @@ enum DemoScenario: String, CaseIterable, Identifiable {
 
 @MainActor
 final class TripStore: NSObject, ObservableObject {
+    @Published var journeyPreview: JourneyPreview?
     @Published var trip: SavedTrip?
     @Published var snapshot: Snapshot?
     @Published var catalog: [Route] = []
@@ -34,14 +36,14 @@ final class TripStore: NSObject, ObservableObject {
         super.init()
         endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? endpoint
         if let data = UserDefaults.standard.data(forKey: "trip-state"), let state = try? Self.decoder.decode(Transfer.self, from: data) {
-            trip = state.trip; snapshot = state.snapshot; demo = state.demo
+            trip = state.trip; snapshot = state.snapshot; demo = state.demo; journeyPreview = state.journeyPreview
         }
         if WCSession.isSupported() {
             session = WCSession.default; session?.delegate = self; session?.activate()
         }
     }
     private func persist() {
-        let state = Transfer(trip: trip, snapshot: snapshot, demo: demo)
+        let state = Transfer(trip: trip, snapshot: snapshot, demo: demo, journeyPreview: journeyPreview)
         if let data = try? Self.encoder.encode(state) { UserDefaults.standard.set(data, forKey: "trip-state") }
         UserDefaults.standard.set(endpoint, forKey: "endpoint")
     }
@@ -49,7 +51,7 @@ final class TripStore: NSObject, ObservableObject {
         persist()
         #if os(iOS)
         guard let session, session.activationState == .activated else { return }
-        guard let data = try? Self.encoder.encode(Transfer(trip: trip, snapshot: snapshot, demo: demo)) else { return }
+        guard let data = try? Self.encoder.encode(Transfer(trip: trip, snapshot: snapshot, demo: demo, journeyPreview: journeyPreview)) else { return }
         do { try session.updateApplicationContext(["state": data]); syncNote = nil }
         catch { syncNote = "Watch sync pending. Open both apps to reconnect." }
         #endif
@@ -150,7 +152,7 @@ extension TripStore: WCSessionDelegate {
     @MainActor private func receive(_ context: [String: Any]) {
         #if os(watchOS)
         guard let data = context["state"] as? Data, let state = try? Self.decoder.decode(Transfer.self, from: data) else { return }
-        trip = state.trip; snapshot = state.snapshot; demo = state.demo; error = nil; persist()
+        trip = state.trip; snapshot = state.snapshot; demo = state.demo; journeyPreview = state.journeyPreview; error = nil; persist()
         #endif
     }
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
