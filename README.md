@@ -7,9 +7,9 @@ A native SwiftUI iPhone app and Apple Watch companion that answer **when should 
 1. Install **Xcode 15 or newer** with iOS 17+ and watchOS 10+ SDKs and simulator runtimes. This development machine currently has Command Line Tools only, so the app targets have not been built or run in Simulator here.
 2. Open **RutgersDeparture.xcodeproj** in Xcode. The project is checked in; no XcodeGen, CocoaPods, or external Swift package is required.
 3. Choose the **RutgersDeparture** scheme and an iPhone Simulator. Press **⌘R**. Simulator builds do not need a paid Apple developer account.
-4. Tap **Set up home**. Choose a campus and stop, enter your average walking time, and choose an optional buffer. Walking time is required, not silently assumed.
-5. Choose a destination campus and stop, then inspect **Earliest**, **Recommended**, and **Later** departures. All three use your normal walking time and full buffer. Open a departure to see its timeline and send the preview to the watch.
-6. The new journey screens are **demo only**: route combinations, rides, and transfers are simulated. EE → LX previews transfer at Student Activities Center; LX → EE previews transfer at College Avenue Student Center. These are separate directional fixtures, pending live verification.
+4. On first launch, pick your home campus, your nearest stop, and your walking time (1–30 min, default 5). **Change** on the home screen reopens setup with your saved choices.
+5. Under **Where to?**, each campus shows its route chips and whether it is **DIRECT** or has **1 TRANSFER**. Pick one to compare **Hurry** (leave now, no buffer), **Steady** (recommended, keeps a 2-minute buffer) and **Wait** (a later bus). Pick a pace to see a live countdown and the step-by-step timeline; the trip is sent to the watch.
+6. The journey screens are **demo only**: route combinations, rides and transfers come from the Bus Concept design fixtures. Every transfer happens at College Ave Student Center, pending live verification.
 7. Tap **Live arrivals** to open the existing route/stop arrival screen and its Data source settings. This retains its separate saved trip and live backend integration. Demo/live source labels remain visible. The journey preview does not replace the live route planner, which is not implemented yet.
 
 For a physical iPhone, select your signing team for both targets. Change both bundle identifiers to your own unique identifiers, and update `WKCompanionAppBundleIdentifier` in `Apps/Watch/Info.plist` to match the phone target. These identifiers are placeholders, not Rutgers affiliation.
@@ -85,8 +85,8 @@ The Python tests cover schedule calendars/exceptions, >24-hour service times, fr
 - Add background notifications only with opt-in and a strategy for changing ETAs and stale data. The current version sends no notifications.
 - Extend support for frequency-based trips, missing absolute arrival times, ambiguous/unmatched trip IDs, and richer alert actions only after their data semantics are verified. These cases currently fail conservatively instead of guessing.
 
-## New journey-screen implementation
+## Bus Concept journey screens
 
-`Apps/iOS/JourneyScreens.swift` contains home setup, destination-stop selection, options, and trip detail. `Apps/Shared/JourneyPreview.swift` defines clearly labeled fixture journeys. The watch receives the selected preview via WatchConnectivity; destination selection still happens on iPhone. Journey previews expire after 90 seconds and stop recommending departure once the leave-by time has passed. Home settings are persisted separately from the existing saved live trip. Native system fonts and semantic surfaces approximate the supplied design while supporting Dynamic Type and dark appearance.
+`Apps/iOS/JourneyScreens.swift` implements the Bus Concept design: campus and stop setup, **Where to?**, **Pick your pace** and the trip countdown. `Apps/Shared/JourneyPreview.swift` holds the demo fixtures and the timing logic, ported from the design. The saved home and active trip live in `TripStore` and sync over WatchConnectivity. On the watch you can start a Steady trip from **Where to?**, follow the countdown and next step, or tap **End trip**. A trip disappears from the watch once its arrival time passes, so one left open on iPhone never hides the rest of the app. **Live arrivals** stays available on both devices. System serif and monospaced fonts stand in for the design's Fraunces and DM Mono; the journey screens use the design's light palette only.
 
-Run `python3 scripts/test_journey_preview.py` to check asymmetric transfer fixtures, walking/buffer arithmetic, expired/missed departures, and serialization. Full iOS/watchOS builds and visual verification still require Xcode.
+Run `python3 scripts/test_journey_preview.py` to check pace timings (worked out by hand from the design), transfers, route alternates, the countdown, trip expiry, clock formatting and serialization.

@@ -6,7 +6,9 @@ struct Transfer: Codable {
     var trip: SavedTrip?
     var snapshot: Snapshot?
     var demo: Bool
-    var journeyPreview: JourneyPreview? = nil
+    // New key: payloads from the pre-concept preview shape are skipped instead of failing the whole decode.
+    var journey: JourneyPreview? = nil
+    var home: HomePreference? = nil
 }
 
 enum DemoScenario: String, CaseIterable, Identifiable {
@@ -16,7 +18,8 @@ enum DemoScenario: String, CaseIterable, Identifiable {
 
 @MainActor
 final class TripStore: NSObject, ObservableObject {
-    @Published var journeyPreview: JourneyPreview?
+    @Published var journey: JourneyPreview?
+    @Published var home: HomePreference?
     @Published var trip: SavedTrip?
     @Published var snapshot: Snapshot?
     @Published var catalog: [Route] = []
@@ -36,22 +39,24 @@ final class TripStore: NSObject, ObservableObject {
         super.init()
         endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? endpoint
         if let data = UserDefaults.standard.data(forKey: "trip-state"), let state = try? Self.decoder.decode(Transfer.self, from: data) {
-            trip = state.trip; snapshot = state.snapshot; demo = state.demo; journeyPreview = state.journeyPreview
+            trip = state.trip; snapshot = state.snapshot; demo = state.demo; journey = state.journey; home = state.home
         }
+        // Homes saved before the store owned them lived in their own key.
+        if home == nil, let data = UserDefaults.standard.data(forKey: "journey-home") { home = try? JSONDecoder().decode(HomePreference.self, from: data) }
         if WCSession.isSupported() {
             session = WCSession.default; session?.delegate = self; session?.activate()
         }
     }
+    private var transfer: Transfer { Transfer(trip: trip, snapshot: snapshot, demo: demo, journey: journey, home: home) }
     private func persist() {
-        let state = Transfer(trip: trip, snapshot: snapshot, demo: demo, journeyPreview: journeyPreview)
-        if let data = try? Self.encoder.encode(state) { UserDefaults.standard.set(data, forKey: "trip-state") }
+        if let data = try? Self.encoder.encode(transfer) { UserDefaults.standard.set(data, forKey: "trip-state") }
         UserDefaults.standard.set(endpoint, forKey: "endpoint")
     }
     func publishToWatch() {
         persist()
         #if os(iOS)
         guard let session, session.activationState == .activated else { return }
-        guard let data = try? Self.encoder.encode(Transfer(trip: trip, snapshot: snapshot, demo: demo, journeyPreview: journeyPreview)) else { return }
+        guard let data = try? Self.encoder.encode(transfer) else { return }
         do { try session.updateApplicationContext(["state": data]); syncNote = nil }
         catch { syncNote = "Watch sync pending. Open both apps to reconnect." }
         #endif
@@ -152,7 +157,7 @@ extension TripStore: WCSessionDelegate {
     @MainActor private func receive(_ context: [String: Any]) {
         #if os(watchOS)
         guard let data = context["state"] as? Data, let state = try? Self.decoder.decode(Transfer.self, from: data) else { return }
-        trip = state.trip; snapshot = state.snapshot; demo = state.demo; journeyPreview = state.journeyPreview; error = nil; persist()
+        trip = state.trip; snapshot = state.snapshot; demo = state.demo; journey = state.journey; home = state.home; error = nil; persist()
         #endif
     }
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
