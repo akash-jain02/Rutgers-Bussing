@@ -37,8 +37,11 @@ struct JourneyPreview: Codable, Identifiable {
     var buffer: Int
     var recommended: Bool
     var routes: String { steps.compactMap(\.route).joined(separator: " → ") }
+    private func isStale(at now: Date) -> Bool { now.timeIntervalSince(createdAt) > 90 || now < createdAt.addingTimeInterval(-30) }
+    /// False once the preview is stale or its departure has passed, so the watch falls back to live departures.
+    func isActive(at now: Date) -> Bool { !isStale(at: now) && now <= leaveAt }
     func recommendation(at now: Date) -> String {
-        if now.timeIntervalSince(createdAt) > 90 || now < createdAt.addingTimeInterval(-30) { return "Refresh options" }
+        if isStale(at: now) { return "Refresh options" }
         if now > leaveAt { return "Choose another departure" }
         let seconds = leaveAt.timeIntervalSince(now)
         if seconds < 60 { return "Go now" }

@@ -21,6 +21,14 @@ for option in outbound {
 }
 precondition(outbound[0].recommendation(at: now) == "Go now")
 precondition(outbound[0].recommendation(at: now.addingTimeInterval(31)) == "Choose another departure")
+// Two-leg timeline: walk+buffer 11 min, EE 12 min, transfer 5 min, LX 12 min.
+let offsets = outbound[0].steps.map { Int($0.at.timeIntervalSince(outbound[0].leaveAt)) }
+precondition(offsets == [0, 660, 1380, 1680, 2400])
+precondition(outbound[0].arriveAt.timeIntervalSince(outbound[0].leaveAt) == 2400)
+// Watch falls back to live departures once a preview is stale or its departure has passed.
+precondition(outbound[1].isActive(at: now))
+precondition(!outbound[1].isActive(at: now.addingTimeInterval(91)))
+precondition(!outbound[0].isActive(at: now.addingTimeInterval(31)))
 let encoded = try JSONEncoder().encode(outbound[1])
 let restored = try JSONDecoder().decode(JourneyPreview.self, from: encoded)
 precondition(restored.id == outbound[1].id)
