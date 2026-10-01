@@ -5,27 +5,17 @@ import WatchConnectivity
 struct Transfer: Codable {
     var trip: SavedTrip?
     var snapshot: Snapshot?
-    var demo: Bool
-    // New key: payloads from the pre-concept preview shape are skipped instead of failing the whole decode.
-    var journey: JourneyPreview? = nil
-    var home: HomePreference? = nil
-}
-
-enum DemoScenario: String, CaseIterable, Identifiable {
-    case normal = "Normal", close = "Next bus too close", delayed = "Delayed", missing = "No predictions", stale = "Stale data", final = "Final scheduled bus"
-    var id: String { rawValue }
+    // Decode legacy mode only to reject saved/synced simulated trips.
+    var demo: Bool? = nil
 }
 
 @MainActor
 final class TripStore: NSObject, ObservableObject {
-    @Published var journey: JourneyPreview?
-    @Published var home: HomePreference?
     @Published var trip: SavedTrip?
     @Published var snapshot: Snapshot?
     @Published var catalog: [Route] = []
-    @Published var demo = true
-    @Published var endpoint = "http://localhost:8000"
-    @Published var scenario: DemoScenario = .normal
+    static let deployedEndpoint = "https://rutty-api.prouddune-2c1f0d5b.canadacentral.azurecontainerapps.io"
+    @Published var endpoint = TripStore.deployedEndpoint
     @Published var error: String?
     @Published var loading = false
     @Published var syncNote: String?
@@ -33,21 +23,28 @@ final class TripStore: NSObject, ObservableObject {
     private var generation = 0
     static let encoder: JSONEncoder = { let e = JSONEncoder(); e.dateEncodingStrategy = .secondsSince1970; return e }()
     static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .secondsSince1970; return d }()
-    static let demoRoutes = [Route(id: "demo-lx", name: "LX · Demo", stops: [Stop(id: "demo-yard", name: "The Yard · Demo"), Stop(id: "demo-livi", name: "Livingston Student Center · Demo")]), Route(id: "demo-h", name: "H · Demo", stops: [Stop(id: "demo-busch", name: "Busch Student Center · Demo")])]
-
     override init() {
         super.init()
-        endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? endpoint
-        if let data = UserDefaults.standard.data(forKey: "trip-state"), let state = try? Self.decoder.decode(Transfer.self, from: data) {
-            trip = state.trip; snapshot = state.snapshot; demo = state.demo; journey = state.journey; home = state.home
+        if UserDefaults.standard.bool(forKey: "live-only-migrated") {
+            endpoint = UserDefaults.standard.string(forKey: "endpoint") ?? Self.deployedEndpoint
         }
-        // Homes saved before the store owned them lived in their own key.
-        if home == nil, let data = UserDefaults.standard.data(forKey: "journey-home") { home = try? JSONDecoder().decode(HomePreference.self, from: data) }
+        if let data = UserDefaults.standard.data(forKey: "trip-state"), let state = try? Self.decoder.decode(Transfer.self, from: data) {
+            apply(state)
+        }
+        UserDefaults.standard.removeObject(forKey: "journey-home")
+        UserDefaults.standard.set(true, forKey: "live-only-migrated")
+        persist()
         if WCSession.isSupported() {
             session = WCSession.default; session?.delegate = self; session?.activate()
         }
     }
-    private var transfer: Transfer { Transfer(trip: trip, snapshot: snapshot, demo: demo, journey: journey, home: home) }
+    private var transfer: Transfer { Transfer(trip: trip, snapshot: snapshot) }
+    private func apply(_ state: Transfer) {
+        let saved = state.trip
+        let simulated = state.demo == true || saved?.routeID.hasPrefix("demo-") == true || saved?.stopID.hasPrefix("demo-") == true
+        trip = simulated ? nil : saved
+        snapshot = !simulated && state.snapshot?.source == "live" ? state.snapshot : nil
+    }
     private func persist() {
         if let data = try? Self.encoder.encode(transfer) { UserDefaults.standard.set(data, forKey: "trip-state") }
         UserDefaults.standard.set(endpoint, forKey: "endpoint")
@@ -61,9 +58,9 @@ final class TripStore: NSObject, ObservableObject {
         catch { syncNote = "Watch sync pending. Open both apps to reconnect." }
         #endif
     }
-    func configure(demo: Bool, endpoint: String) async {
+    func configure(endpoint: String) async {
         generation += 1
-        self.demo = demo; self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.endpoint = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         trip = nil; snapshot = nil; catalog = []; error = nil
         publishToWatch()
         await loadCatalog()
@@ -82,14 +79,13 @@ final class TripStore: NSObject, ObservableObject {
         return url
     }
     private func request<T: Decodable>(_ type: T.Type, url: URL) async throws -> T {
-        var request = URLRequest(url: url); request.timeoutInterval = 35; request.cachePolicy = .reloadIgnoringLocalCacheData
+        var request = URLRequest(url: url); request.timeoutInterval = 60; request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse, response.statusCode == 200 else { throw URLError(.badServerResponse) }
         return try Self.decoder.decode(type, from: data)
     }
     func loadCatalog() async {
         let revision = generation
-        if demo { catalog = Self.demoRoutes; return }
         do {
             let routes = try await request([Route].self, url: url("catalog"))
             guard generation == revision else { return }
@@ -108,11 +104,9 @@ final class TripStore: NSObject, ObservableObject {
         loading = true
         defer { loading = false }
         do {
-            let value: Snapshot
-            if demo { value = makeDemo(trip: trip) }
-            else { value = try await request(Snapshot.self, url: url("arrivals", query: [.init(name: "route_id", value: trip.routeID), .init(name: "stop_id", value: trip.stopID)])) }
+            let value = try await request(Snapshot.self, url: url("arrivals", query: [.init(name: "route_id", value: trip.routeID), .init(name: "stop_id", value: trip.stopID)]))
             guard generation == revision else { return }
-            guard value.routeID == trip.routeID, value.stopID == trip.stopID, value.source == (demo ? "demo" : "live") else { throw URLError(.cannotParseResponse) }
+            guard value.routeID == trip.routeID, value.stopID == trip.stopID, value.source == "live" else { throw URLError(.cannotParseResponse) }
             snapshot = value; error = nil; publishToWatch()
         } catch {
             guard generation == revision else { return }
@@ -120,24 +114,7 @@ final class TripStore: NSObject, ObservableObject {
         }
         #endif
     }
-    private func makeDemo(trip: SavedTrip) -> Snapshot {
-        let now = Date()
-        let needed = Double((trip.walkingMinutes + trip.bufferMinutes) * 60)
-        let offsets: [Double]
-        switch scenario {
-        case .normal: offsets = [needed + 300, needed + 1020]
-        case .close: offsets = [60, needed + 600]
-        case .delayed: offsets = [needed + 900, needed + 1500]
-        case .missing: offsets = []
-        case .stale: offsets = [needed + 300, needed + 1020]
-        case .final: offsets = [needed + 30]
-        }
-        let observed = scenario == .stale ? now.addingTimeInterval(-300) : now
-        return Snapshot(routeID: trip.routeID, stopID: trip.stopID, source: "demo", updatedAt: observed,
-                        arrivals: offsets.enumerated().map { Arrival(id: "demo-\($0.offset)", predictedAt: now.addingTimeInterval($0.element), observedAt: observed, finalScheduled: scenario == .final) },
-                        alerts: scenario == .delayed ? ["Demo disruption: traffic delays on this route."] : [],
-                        scheduleNote: "Simulated schedule and arrivals. Do not use demo data for travel.")
-    }
+
 }
 
 extension TripStore: WCSessionDelegate {
@@ -157,7 +134,7 @@ extension TripStore: WCSessionDelegate {
     @MainActor private func receive(_ context: [String: Any]) {
         #if os(watchOS)
         guard let data = context["state"] as? Data, let state = try? Self.decoder.decode(Transfer.self, from: data) else { return }
-        trip = state.trip; snapshot = state.snapshot; demo = state.demo; journey = state.journey; home = state.home; error = nil; persist()
+        apply(state); error = nil; persist()
         #endif
     }
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {

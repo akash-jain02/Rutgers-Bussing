@@ -18,10 +18,6 @@ struct HomeView: View {
                 VStack(spacing: 24) {
                     DepartureView()
                     if store.trip == nil { Button("Set up my trip") { setup = true }.buttonStyle(.borderedProminent) }
-                    if store.demo {
-                        Picker("Demo scenario", selection: $store.scenario) { ForEach(DemoScenario.allCases) { Text($0.rawValue).tag($0) } }
-                        .onChange(of: store.scenario) { _, _ in Task { await store.refresh() } }
-                    }
                     Button { Task { await store.refresh() } } label: { Label(store.loading ? "Refreshing…" : "Refresh arrivals", systemImage: "arrow.clockwise") }.disabled(store.loading || store.trip == nil)
                     Link("Check official TripShot", destination: URL(string: "https://rutgers.tripshot.com")!).font(.footnote)
                 }.padding(24)
@@ -60,7 +56,6 @@ struct SetupView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if store.demo { Text("Demo routes and simulated arrivals. Select Live in Data source to use TripShot.").foregroundStyle(.orange) }
                 Section("Your bus") {
                     Picker("Route", selection: $routeID) {
                         Text("Choose a route").tag("")
@@ -102,13 +97,11 @@ struct SetupView: View {
 struct ConnectionView: View {
     @EnvironmentObject var store: TripStore
     @Environment(\.dismiss) private var dismiss
-    @State private var demo = true
     @State private var endpoint = ""
     var body: some View {
         NavigationStack {
             Form {
-                Toggle("Use demo data", isOn: $demo)
-                if !demo {
+                Section("Live API") {
                     TextField("Backend URL", text: $endpoint).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Text("For Simulator: http://localhost:8000. On a phone, use your Mac’s local hostname or a deployed HTTPS endpoint.").font(.caption)
                 }
@@ -116,9 +109,9 @@ struct ConnectionView: View {
             }.navigationTitle("Data source")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Apply") { Task { await store.configure(demo: demo, endpoint: endpoint) }; dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Apply") { Task { await store.configure(endpoint: endpoint) }; dismiss() } }
                 }
-                .onAppear { demo = store.demo; endpoint = store.endpoint }
+                .onAppear { endpoint = store.endpoint }
         }
     }
 }

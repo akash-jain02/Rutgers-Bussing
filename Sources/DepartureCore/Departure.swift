@@ -58,14 +58,14 @@ public enum DepartureEngine {
         return (-30...maximumAge).contains(now.timeIntervalSince(date))
     }
     public static func visible(_ snapshot: Snapshot, now: Date) -> [Arrival] {
-        guard fresh(snapshot.updatedAt, now: now) else { return [] }
+        guard snapshot.source == "live", fresh(snapshot.updatedAt, now: now) else { return [] }
         return snapshot.arrivals.filter { $0.predictedAt >= now && fresh($0.observedAt, now: now) }.sorted { $0.predictedAt < $1.predictedAt }
     }
     public static func recommend(trip: SavedTrip, snapshot: Snapshot?, now: Date) -> Recommendation {
         func unavailable(_ text: String) -> Recommendation { .init(title: "Check arrivals", explanation: text, departureAt: nil, arrivalID: nil) }
         guard (1...120).contains(trip.walkingMinutes), (0...30).contains(trip.bufferMinutes) else { return unavailable("Set your walking time and buffer.") }
         guard let snapshot, snapshot.routeID == trip.routeID, snapshot.stopID == trip.stopID else { return unavailable("Arrival predictions are unavailable for this trip.") }
-        guard fresh(snapshot.updatedAt, now: now) else { return unavailable("Arrival data is outdated or unavailable. Refresh before deciding when to leave.") }
+        guard snapshot.source == "live", fresh(snapshot.updatedAt, now: now) else { return unavailable("Arrival data is outdated or unavailable. Refresh before deciding when to leave.") }
         let arrivals = visible(snapshot, now: now)
         let required = TimeInterval((trip.walkingMinutes + trip.bufferMinutes) * 60)
         guard let target = arrivals.first(where: { $0.predictedAt.timeIntervalSince(now) >= required }) else {

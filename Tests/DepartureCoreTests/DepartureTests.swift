@@ -71,4 +71,10 @@ final class DepartureTests: XCTestCase {
         let data = Snapshot(routeID: "r", stopID: "s", source: "live", updatedAt: late, arrivals: [.init(id: "a", predictedAt: late.addingTimeInterval(1020), observedAt: late)])
         XCTAssertEqual(DepartureEngine.recommend(trip: trip, snapshot: data, now: late).departureAt, late.addingTimeInterval(600))
     }
+    func testNonLiveSnapshotRejected() {
+        var data = snapshot([1020]); data.source = "demo"
+        XCTAssertNil(DepartureEngine.recommend(trip: trip, snapshot: data, now: now).arrivalID)
+        XCTAssertTrue(DepartureEngine.visible(data, now: now).isEmpty)
+    }
+
 }

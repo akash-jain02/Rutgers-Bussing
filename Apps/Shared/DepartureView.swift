@@ -10,8 +10,8 @@ struct DepartureView: View {
                 let recommendation = DepartureEngine.recommend(trip: trip, snapshot: store.snapshot, now: context.date)
                 let arrivals = store.snapshot.map { DepartureEngine.visible($0, now: context.date) } ?? []
                 VStack(alignment: .leading, spacing: compact ? 12 : 24) {
-                    Label(store.demo ? "DEMO · NOT LIVE" : "TRIPSHOT ESTIMATES", systemImage: store.demo ? "testtube.2" : "antenna.radiowaves.left.and.right")
-                        .font(.caption.bold()).foregroundStyle(store.demo ? .orange : .secondary)
+                    Label("TRIPSHOT ESTIMATES", systemImage: "antenna.radiowaves.left.and.right")
+                        .font(.caption.bold()).foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(trip.routeName).font(.headline).foregroundStyle(.red)
                         Text(trip.stopName).font(compact ? .headline : .title2).bold()
